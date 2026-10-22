@@ -122,3 +122,63 @@ def get_reading(reading_id):
     return jsonify({**dict(row),
                     "reading_date": row["reading_date"].isoformat(),
                     "cumulative_kwh": float(row["cumulative_kwh"])})
+# ---------- UPDATE ----------
+@readings_bp.put("/<int:reading_id>")
+def update_reading(reading_id):
+    data = request.get_json(silent=True) or {}
+    clean, problem = validate_reading(data)
+    if problem:
+        return error(problem, 400)
+
+    try:
+        with engine.begin() as conn:
+            current = conn.execute(
+                text("SELECT meter_id, reading_date FROM meter_readings "
+                     "WHERE reading_id = :id"),
+                {"id": reading_id},
+            ).mappings().first()
+            if current is None:
+                return error("reading not found", 404)
+            if current["meter_id"] != clean["meter_id"]:
+                return error("a reading cannot be moved to another meter", 400)
+
+            # The new date must stay between the readings before and after it.
+            prev_date = conn.execute(
+                text("SELECT MAX(reading_date) FROM meter_readings "
+                     "WHERE meter_id = :m AND reading_date < :old"),
+                {"m": clean["meter_id"], "old": current["reading_date"]},
+            ).scalar()
+            next_date = conn.execute(
+                text("SELECT MIN(reading_date) FROM meter_readings "
+                     "WHERE meter_id = :m AND reading_date > :old"),
+                {"m": clean["meter_id"], "old": current["reading_date"]},
+            ).scalar()
+            if prev_date and clean["date"] <= prev_date:
+                return error(f"reading_date must be after the previous reading ({prev_date})", 409)
+            if next_date and clean["date"] >= next_date:
+                return error(f"reading_date must be before the next reading ({next_date})", 409)
+
+            conn.execute(
+                text("UPDATE meter_readings SET reading_date = :d, cumulative_kwh = :k "
+                     "WHERE reading_id = :id"),
+                {"d": clean["date"], "k": clean["kwh"], "id": reading_id},
+            )
+    except IntegrityError:
+        return error("a reading for this meter and date already exists", 409)
+
+    return jsonify(message="reading updated")
+
+
+# ---------- DELETE ----------
+@readings_bp.delete("/<int:reading_id>")
+def delete_reading(reading_id):
+    with engine.begin() as conn:
+        exists = conn.execute(
+            text("SELECT 1 FROM meter_readings WHERE reading_id = :id"),
+            {"id": reading_id},
+        ).first()
+        if exists is None:
+            return error("reading not found", 404)
+        conn.execute(text("DELETE FROM meter_readings WHERE reading_id = :id"),
+                     {"id": reading_id})
+    return jsonify(message="reading deleted")
