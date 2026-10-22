@@ -1,30 +1,42 @@
 from flask import Flask, jsonify
 from sqlalchemy import text
+from sqlalchemy.exc import SQLAlchemyError
 
 from db import engine
-
-app = Flask(__name__)
-
-
-@app.get("/health")
-def health():
-    try:
-        with engine.connect() as conn:
-            conn.execute(text("SELECT 1"))
-        return jsonify(status="ok", database="connected")
-    except Exception:
-        return jsonify(error="database unreachable"), 503
+from routes.consumers import consumers_bp
+from utils import error
 
 
-@app.get("/consumers")
-def list_consumers():
-    with engine.connect() as conn:
-        rows = conn.execute(
-            text("SELECT consumer_id, consumer_code, consumer_type, region "
-                 "FROM consumers ORDER BY consumer_id")
-        ).mappings().all()
-    return jsonify([dict(r) for r in rows])
+def create_app():
+    app = Flask(__name__)
+    app.register_blueprint(consumers_bp)
 
+    @app.get("/health")
+    def health():
+        try:
+            with engine.connect() as conn:
+                conn.execute(text("SELECT 1"))
+            return jsonify(status="ok", database="connected")
+        except SQLAlchemyError:
+            return error("database unreachable", 503)
+
+    @app.errorhandler(404)
+    def not_found(e):
+        return error("route not found", 404)
+
+    @app.errorhandler(405)
+    def wrong_method(e):
+        return error("method not allowed for this route", 405)
+
+    @app.errorhandler(SQLAlchemyError)
+    def database_error(e):
+        app.logger.exception("Database error")
+        return error("a database error occurred", 500)
+
+    return app
+
+
+app = create_app()
 
 if __name__ == "__main__":
     app.run(debug=True)
