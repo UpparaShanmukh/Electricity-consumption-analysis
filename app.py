@@ -6,12 +6,14 @@ from db import engine
 from routes.consumers import consumers_bp
 from routes.meters import meters_bp
 from utils import error
+from routes.readings import readings_bp
 
 
 def create_app():
     app = Flask(__name__)
     app.register_blueprint(consumers_bp)
     app.register_blueprint(meters_bp)
+    app.register_blueprint(readings_bp)
 
     @app.get("/health")
     def health():
