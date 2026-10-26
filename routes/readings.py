@@ -79,7 +79,9 @@ def create_reading():
         response["warning"] = ("value is lower than the previous reading; "
                                "possible meter reset or rollover")
     return jsonify(response), 201
-# ---------- READ (all, optional filter) ----------
+
+
+# ---------- READ (all, optional ?meter_id=1) ----------
 @readings_bp.get("")
 def list_readings():
     meter_id = request.args.get("meter_id", type=int)
@@ -122,6 +124,8 @@ def get_reading(reading_id):
     return jsonify({**dict(row),
                     "reading_date": row["reading_date"].isoformat(),
                     "cumulative_kwh": float(row["cumulative_kwh"])})
+
+
 # ---------- UPDATE ----------
 @readings_bp.put("/<int:reading_id>")
 def update_reading(reading_id):
@@ -178,7 +182,4 @@ def delete_reading(reading_id):
             {"id": reading_id},
         ).first()
         if exists is None:
-            return error("reading not found", 404)
-        conn.execute(text("DELETE FROM meter_readings WHERE reading_id = :id"),
-                     {"id": reading_id})
-    return jsonify(message="reading deleted")
+            return
