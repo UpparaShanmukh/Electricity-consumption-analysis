@@ -8,6 +8,7 @@ from routes.meters import meters_bp
 from utils import error
 from routes.readings import readings_bp
 from routes.analysis import analysis_bp
+from routes.validation import validation_bp
 
 def create_app():
     app = Flask(__name__)
@@ -15,6 +16,7 @@ def create_app():
     app.register_blueprint(meters_bp)
     app.register_blueprint(readings_bp)
     app.register_blueprint(analysis_bp)
+    app.register_blueprint(validation_bp)
 
     @app.get("/health")
     def health():
