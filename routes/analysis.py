@@ -1,4 +1,6 @@
 import pandas as pd
+import math
+import os
 from flask import Blueprint, jsonify
 from sqlalchemy import text
 
@@ -98,3 +100,58 @@ def meter_summary(meter_id):
 
     periods = calculate_consumption(rows)
     return jsonify(meter_id=meter_id, level=level, summary=summarize(periods, level))
+def default_factor():
+    """Read the threshold factor from .env, falling back to 1.5."""
+    try:
+        return float(os.getenv("HIGH_USAGE_FACTOR", "1.5"))
+    except ValueError:
+        return 1.5
+
+
+def find_high_usage(periods, factor):
+    """Return (average, limit, flagged_periods) for one meter."""
+    valid = [p for p in periods if p["status"] == "valid"]
+    if not valid:
+        return 0.0, 0.0, []
+
+    average = sum(p["consumption_kwh"] for p in valid) / len(valid)
+    limit = average * factor
+
+    flagged = [
+        {**p, "times_average": round(p["consumption_kwh"] / average, 2)}
+        for p in valid
+        if p["consumption_kwh"] > limit
+    ]
+    return round(average, 2), round(limit, 2), flagged
+
+
+@analysis_bp.get("/high-usage/<int:meter_id>")
+def high_usage(meter_id):
+    raw = request.args.get("factor")
+    if raw is None:
+        factor = default_factor()
+    else:
+        try:
+            factor = float(raw)
+        except ValueError:
+            return error("factor must be a number", 400)
+    if not math.isfinite(factor) or factor <= 0:
+        return error("factor must be a positive number", 400)
+
+    with engine.connect() as conn:
+        meter = conn.execute(
+            text("SELECT 1 FROM meters WHERE meter_id = :m"), {"m": meter_id}
+        ).first()
+        if meter is None:
+            return error("meter not found", 404)
+
+        rows = conn.execute(
+            text("SELECT reading_date, cumulative_kwh FROM meter_readings "
+                 "WHERE meter_id = :m ORDER BY reading_date"),
+            {"m": meter_id},
+        ).mappings().all()
+
+    periods = calculate_consumption(rows)
+    average, limit, flagged = find_high_usage(periods, factor)
+    return jsonify(meter_id=meter_id, factor=factor,
+                   average_kwh=average, limit_kwh=limit, flagged=flagged)
