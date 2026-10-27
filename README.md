@@ -1,6 +1,6 @@
 # Electricity Consumption Analysis System
 
-A Flask + MySQL + Pandas REST API that stores meter readings, calculates consumption, summarizes usage by month and year, and flags unusually high usage.
+A Flask + MySQL REST API that stores meter readings, calculates consumption with Pandas and NumPy, summarizes usage by month and year, flags unusually high usage, validates readings, and draws usage charts with Matplotlib.
 
 ## Setup
 
@@ -16,11 +16,13 @@ Requirements: Python 3.10+, MySQL 8.0.16+, Git.
    ```
    pip install -r requirements.txt
    ```
-4. Create a file named `.env` in the project folder with your MySQL details:
+4. Create a file named `.env` in the project folder with your MySQL details and the settings below. Never commit this file.
    ```
    NAME_1=your_value
    NAME_2=your_value
    HIGH_USAGE_FACTOR=1.5
+   MAX_GAP_DAYS=45
+   METER_MAX_KWH=100000
    ```
 5. Create the empty database:
    ```
@@ -33,6 +35,7 @@ Requirements: Python 3.10+, MySQL 8.0.16+, Git.
    The API runs at http://127.0.0.1:5000. Check http://127.0.0.1:5000/health.
 
 The database starts empty. To try the project with example data, run `sql/sample_data.sql` in MySQL Workbench (3 consumers, 3 meters, 6 readings each).
+
 ## Units and assumptions
 
 - All readings and consumption are in kilowatt-hours (kWh). A reading is a cumulative meter total on a date.
@@ -63,6 +66,20 @@ The database starts empty. To try the project with example data, run `sql/sample
 | GET | `/analysis/consumption/<meter_id>` | Consumption per period |
 | GET | `/analysis/summary/<meter_id>?level=monthly\|yearly` | Monthly or yearly totals |
 | GET | `/analysis/high-usage/<meter_id>?factor=1.5` | Periods above average × factor |
+| GET | `/analysis/change/<meter_id>` | Change vs previous period (kWh and %) |
+| GET | `/validation` | Reading-validation report for all meters |
+| GET | `/validation/<meter_id>` | Reading-validation report for one meter (`?max_gap_days=`) |
+| GET | `/charts/trend/<meter_id>.png` | Monthly usage chart with high-usage marks |
+| GET | `/charts/compare.png` | Consumption comparison across consumers |
+
+## Expected outputs
+
+| Output | Where it comes from |
+|---|---|
+| Monthly consumption report | `/analysis/summary/<meter_id>` |
+| High-usage list | `/analysis/high-usage/<meter_id>` |
+| Usage chart | `/charts/trend/<meter_id>.png`, `/charts/compare.png` |
+| Reading-validation report | `/validation/<meter_id>` |
 
 ## Example
 
@@ -77,13 +94,16 @@ app.py            Flask app and blueprint registration
 db.py             Database connection
 utils.py          Shared error helper
 init_db.py        Creates the empty database from sql/schema.sql
-routes/           consumers.py, meters.py, readings.py, analysis.py
+requirements.txt  Python packages
+routes/           consumers.py, meters.py, readings.py, analysis.py,
+                  validation.py, charts.py
 sql/              schema.sql, sample_data.sql
-docs/             ER diagram, data dictionary, synopsis
+docs/             er_diagram.png, data_dictionary.md, synopsis.md, test_report.md
 ```
 
 ## Documentation
 
 - [Data dictionary](docs/data_dictionary.md)
 - [Synopsis](docs/synopsis.md)
+- [Test report](docs/test_report.md)
 - ER diagram: `docs/er_diagram.png`
