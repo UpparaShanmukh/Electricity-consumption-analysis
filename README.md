@@ -33,6 +33,22 @@ Requirements: Python 3.10+, MySQL 8.0.16+, Git.
    The API runs at http://127.0.0.1:5000. Check http://127.0.0.1:5000/health.
 
 The database starts empty. To try the project with example data, run `sql/sample_data.sql` in MySQL Workbench (3 consumers, 3 meters, 6 readings each).
+## Units and assumptions
+
+- All readings and consumption are in kilowatt-hours (kWh). A reading is a cumulative meter total on a date.
+- Consumption of a period = later reading minus earlier reading.
+- A reading lower than the previous one is accepted but flagged as a possible meter reset or rollover. The affected period is excluded from totals and listed in the validation report. A drop from within 10% of the meter's maximum (`METER_MAX_KWH`) is labelled a rollover.
+- A period counts toward the month or year in which it starts.
+- High usage means a period above the meter's average valid consumption multiplied by a factor (default 1.5, set by `HIGH_USAGE_FACTOR`).
+- The project uses sample readings. All figures are analytical estimates and do not replace official billing calculations.
+
+## Configuration (.env)
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `HIGH_USAGE_FACTOR` | 1.5 | High-usage threshold factor |
+| `MAX_GAP_DAYS` | 45 | Longest normal gap between readings |
+| `METER_MAX_KWH` | 100000 | Meter dial maximum, used to tell rollovers from resets |
 
 ## Endpoints
 
