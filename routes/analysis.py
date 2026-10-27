@@ -7,6 +7,7 @@ from sqlalchemy import text
 from db import engine
 from utils import error
 from flask import Blueprint, jsonify, request
+import numpy as np
 
 analysis_bp = Blueprint("analysis", __name__, url_prefix="/analysis")
 
@@ -155,3 +156,43 @@ def high_usage(meter_id):
     average, limit, flagged = find_high_usage(periods, factor)
     return jsonify(meter_id=meter_id, factor=factor,
                    average_kwh=average, limit_kwh=limit, flagged=flagged)
+def add_changes(periods):
+    """Add change vs the previous period, using NumPy.
+
+    A period right after a reset has no valid previous value,
+    so its change is None.
+    """
+    values = np.array(
+        [np.nan if p["status"] == "reset" else p["consumption_kwh"] for p in periods],
+        dtype=float,
+    )
+    previous = np.concatenate(([np.nan], values[:-1]))
+    change = values - previous
+    with np.errstate(divide="ignore", invalid="ignore"):
+        percent = change / previous * 100
+
+    result = []
+    for p, c, pc in zip(periods, change, percent):
+        result.append({
+            **p,
+            "change_kwh": round(float(c), 2) if np.isfinite(c) else None,
+            "change_pct": round(float(pc), 1) if np.isfinite(pc) else None,
+        })
+    return result
+
+
+@analysis_bp.get("/change/<int:meter_id>")
+def meter_change(meter_id):
+    with engine.connect() as conn:
+        meter = conn.execute(
+            text("SELECT 1 FROM meters WHERE meter_id = :m"), {"m": meter_id}
+        ).first()
+        if meter is None:
+            return error("meter not found", 404)
+        rows = conn.execute(
+            text("SELECT reading_date, cumulative_kwh FROM meter_readings "
+                 "WHERE meter_id = :m ORDER BY reading_date"),
+            {"m": meter_id},
+        ).mappings().all()
+
+    return jsonify(meter_id=meter_id, periods=add_changes(calculate_consumption(rows)))
